@@ -15,10 +15,32 @@ def get_max_dd(arr: np.ndarray) -> float:
 def get_ann_vol(arr: np.ndarray) -> float:
     return arr.std() * np.sqrt(TRADING_DAYS)
 
+def get_rolling_vol(df: pd.DataFrame, window: int) -> pd.DataFrame:
+    df['asset_rolling_vol'] = df['asset_ret'].rolling(window=window, min_periods=window).std() * np.sqrt(window)
+    df['benchmark_rolling_vol'] = df['benchmark_ret'].rolling(window=window, min_periods=window).std() * np.sqrt(window)
+    return df
+
 def get_sharp_ratio(arr: np.ndarray) -> float:
-    ann_vol_ = arr.std() * np.sqrt(TRADING_DAYS)
+    rolling_vol_ = arr.std() * np.sqrt(TRADING_DAYS)
     total_ret_ = arr.mean() * TRADING_DAYS
-    return (total_ret_ - np.log(1.05)) / ann_vol_
+    return (total_ret_ - np.log(1.05) ) / rolling_vol_
+
+def get_rolling_sharp(df: pd.DataFrame, window: int) -> pd.DataFrame:
+    rf_daily = np.log(1 + RISK_FREE_RATE) / TRADING_DAYS
+    
+    #Asset calc
+    asset_excess_returns = df['asset_ret'] - rf_daily
+    asset_rolling_mean = asset_excess_returns.rolling(window=window, min_periods=window).mean()
+    asset_rolling_std = df['asset_ret'].rolling(window=window, min_periods=window).std()
+    df['asset_rolling_sharpe'] = (asset_rolling_mean / asset_rolling_std) * np.sqrt(TRADING_DAYS)
+    
+    #Benchmark calc
+    benchmark_exess_ret = df['benchmark_ret'] - rf_daily
+    bench_rolling_mean = benchmark_exess_ret.rolling(window=window, min_periods=window).mean()
+    bench_rolling_std = df['benchmark_ret'].rolling(window=window, min_periods=window).std()
+    df['benchmark_rolling_sharpe'] = (bench_rolling_mean / bench_rolling_std) * np.sqrt(TRADING_DAYS)
+
+    return df
 
 
 def get_sortino_ratio(arr: np.ndarray) -> float:
@@ -31,6 +53,7 @@ def get_cgar(arr: np.ndarray) -> float:
     t_ = arr.size / TRADING_DAYS
     total_ret = np.sum(arr) 
     return np.exp(total_ret / t_) - 1
+
 def get_calmar(cgar: float, max_dd: float):
     return cgar/max_dd
 
@@ -61,21 +84,15 @@ def get_r_pow_2(asset: np.ndarray, benchmark:np.ndarray) -> tuple[float, float, 
     return (beta, alpha, r_2, information_ratio)
 
 def get_all_metrics(df: pd.DataFrame):
-    asset_ret_arr = df['asset_ret'].to_numpy()
-    benchmark_ret_arr = df['benchmark_ret'].to_numpy()
-    asset_max_dd = get_max_dd(asset_ret_arr)
-    benchmark_max_dd = get_max_dd(benchmark_ret_arr)
-    ann_asset_vol = get_ann_vol(asset_ret_arr)
+    asset_ret_arr = df['asset_ret'].copy().to_numpy()
+    benchmark_ret_arr = df['benchmark_ret'].copy().to_numpy()
+    max_dd = get_max_dd(asset_ret_arr)
     cgar = get_cgar(asset_ret_arr)
-    calmar = get_calmar(cgar, asset_max_dd)
-    asset_sharp = get_sharp_ratio (asset_ret_arr)
-    asset_sortino = get_sortino_ratio(asset_ret_arr)    
+    calmar = get_calmar(cgar, max_dd)
+    sortino = get_sortino_ratio(asset_ret_arr)    
     beta, alpha, r_2, information_ratio = get_r_pow_2(asset_ret_arr, benchmark_ret_arr)
 
-    print (beta)
-    print (alpha)
-    print (r_2)
-    print (information_ratio)
+    return (max_dd, cgar, calmar, sortino, beta, alpha, r_2, information_ratio)
 if __name__ == '__main__':
     df = pd.read_csv("out.csv")
     get_all_metrics(df)
